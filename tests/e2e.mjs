@@ -154,6 +154,69 @@ await page.click('#dxp-bar .dxp-bar__x');
 check(await page.evaluate(() => Math.round(document.getElementById('fx-header').getBoundingClientRect().top) === 0 && !document.getElementById('dxp-bar-space')), 'po zamknięciu paska nagłówek wraca na górę');
 await context.close();
 
+// Przypadki z oceny Codexa: nagłówek ustawiony od dołu nie dostaje rosnącego marginesu, własny margines nagłówka
+// wraca po zamknięciu paska, wąski panel boczny i niewidoczna nakładka nie chowają paska.
+({ context, page } = await open({ width: 1440, height: 900 }));
+await page.goto(base + '?fx=bottom', { waitUntil: 'load' });
+await page.waitForTimeout(500);
+const margin = () => page.evaluate(() => { const h = document.getElementById('fx-header').style; return h.marginTop + '|' + h.translate; });
+const first = await margin();
+for (let i = 0; i < 4; i += 1) { await page.evaluate(() => document.body.classList.toggle('fx-tick')); await page.waitForTimeout(300); }
+await page.mouse.wheel(0, 400); await page.waitForTimeout(300);
+check(await margin() === first, `nagłówek ustawiony od dołu: przesunięcie stałe (${first} i ${await margin()})`);
+let l2 = await layout(page);
+check(l2.headerTop === 0, `nagłówek ustawiony od dołu zostaje tam, gdzie postawił go motyw (${l2.headerTop})`);
+await context.close();
+// Nagłówek od dołu z animacją marginesu, wyśrodkowany, z menu fixed w środku: wtyczka go nie psuje,
+// zostaje wyśrodkowany, a jego menu nadal zajmuje cały ekran i zakrywa pasek.
+({ context, page } = await open({ width: 1440, height: 900 }));
+await page.goto(base + '?fx=center', { waitUntil: 'load' });
+await page.waitForTimeout(2500);
+l2 = await layout(page);
+// shortcut w bar.js: nagłówek od dołu nie schodzi pod pasek; sprawdzamy, że niczego nie psuje.
+check(await page.evaluate(() => { const r = document.getElementById('fx-header').getBoundingClientRect(); return Math.abs(r.left + r.width / 2 - innerWidth / 2) < 2; }), 'wyśrodkowany nagłówek zostaje wyśrodkowany');
+await page.evaluate(() => document.getElementById('fx-menu').classList.add('open'));
+await page.waitForTimeout(700);
+check(await page.evaluate(() => { const r = document.getElementById('fx-menu').getBoundingClientRect(); return r.top === 0 && Math.round(r.height) === innerHeight; }), 'menu fixed w nagłówku zajmuje cały ekran');
+check(await page.evaluate(() => getComputedStyle(document.getElementById('dxp-bar')).visibility === 'hidden'), 'menu w nagłówku chowa pasek');
+await context.close();
+// Motyw zmienia top przypiętego nagłówka z 30 na 0 bez zmiany position: nagłówek dalej pod paskiem.
+({ context, page } = await open({ width: 1440, height: 900 }));
+await page.goto(base + '?fx=fixed', { waitUntil: 'load' });
+await page.evaluate(() => document.getElementById('fx-header').style.setProperty('top', '30px'));
+await page.waitForTimeout(500);
+l2 = await layout(page);
+check(l2.headerTop >= l2.barBottom - 1, `nagłówek z top 30px pod paskiem (${l2.barBottom}, ${l2.headerTop})`);
+await page.evaluate(() => document.getElementById('fx-header').style.setProperty('top', '0px'));
+await page.waitForTimeout(500);
+l2 = await layout(page);
+check(l2.headerTop >= l2.barBottom - 1, `po zmianie top na 0 nagłówek dalej pod paskiem (${l2.barBottom}, ${l2.headerTop})`);
+// Motyw przestawia nagłówek niżej (top 80px): wtyczka nie cofa tego przy zdejmowaniu marginesu.
+await page.evaluate(() => document.getElementById('fx-header').style.setProperty('top', '80px'));
+await page.waitForTimeout(500);
+l2 = await layout(page);
+check(l2.headerTop === 80, `nagłówek przestawiony przez motyw na 80px zostaje na 80px (${l2.headerTop})`);
+await context.close();
+({ context, page } = await open({ width: 1440, height: 900 }));
+await page.goto(base + '?fx=inline', { waitUntil: 'load' });
+await page.waitForTimeout(400);
+await page.click('#dxp-bar .dxp-bar__x');
+check(await page.evaluate(() => document.getElementById('fx-header').style.marginTop) === '20px', 'po zamknięciu paska nagłówek ma z powrotem własny margines 20px');
+await context.close();
+({ context, page } = await open({ width: 1440, height: 900 }));
+await page.goto(base + '?fx=fixed', { waitUntil: 'load' });
+await page.evaluate(() => {
+  const side = document.createElement('div');
+  side.style.cssText = 'position:fixed;top:0;left:0;width:100px;height:100vh;background:#fde68a;z-index:20';
+  const ghost = document.createElement('div');
+  ghost.style.cssText = 'opacity:0';
+  ghost.innerHTML = '<div style="position:fixed;inset:0;z-index:30"></div>';
+  document.body.append(side, ghost);
+});
+await page.waitForTimeout(700);
+check(await page.evaluate(() => getComputedStyle(document.getElementById('dxp-bar')).visibility === 'visible'), 'wąski panel boczny i niewidoczna nakładka nie chowają paska');
+await context.close();
+
 // Zalogowany administrator: pasek pod paskiem administratora, nagłówek pod paskiem.
 ({ context, page } = await open({ width: 1440, height: 900 }));
 await page.goto(base + 'wp-login.php');

@@ -93,7 +93,12 @@
       [rect.top + 2, rect.bottom - 2].forEach(function (y) {
         [0.05, 0.5, 0.95].forEach(function (x) {
           document.elementsFromPoint(window.innerWidth * x, y).forEach(function (node) {
-            if (candidate(node)) shifted.push({ node: node, base: parseFloat(window.getComputedStyle(node).marginTop) || 0, offset: 0 });
+            if (!candidate(node)) return;
+            shifted.push({
+              node: node,
+              base: parseFloat(window.getComputedStyle(node).marginTop) || 0,
+              saved: [node.style.getPropertyValue('margin-top'), node.style.getPropertyPriority('margin-top')]
+            });
           });
         });
       });
@@ -104,7 +109,20 @@
       if (node.style.getPropertyValue(name) !== value) node.style.setProperty(name, value, priority || '');
     }
 
-    // Przesunięcie przez margin-top: działa niezależnie od tego, jak motyw ustawia top przypiętego nagłówka.
+    // Przywraca tylko margin-top, który zmieniamy: pierwotną wartość i priorytet z atrybutu style.
+    function restore(item) {
+      var style = item.node.style;
+      if (style.getPropertyValue('margin-top') === item.saved[0] && style.getPropertyPriority('margin-top') === item.saved[1]) return;
+      if (item.saved[0] !== '') style.setProperty('margin-top', item.saved[0], item.saved[1]);
+      else style.removeProperty('margin-top');
+    }
+
+    // Element schodzi tuż pod pasek: przypięty do ekranu pod jego widoczną dolną krawędź, przewijany ze stroną pod
+    // miejsce paska na stronie. Położenie bez naszego marginesu liczymy w każdej klatce z bieżącego (obliczony margin-top
+    // minus bazowy, także w trakcie animacji motywu), więc zmiana top przez motyw jest uwzględniona od razu.
+    // Bez transform i translate: zmieniłyby układ odniesienia menu fixed w nagłówku i jego przesunięcie poziome.
+    // shortcut: element ustawiony od dołu (bottom, bez top) nie schodzi od margin-top i zostaje tam, gdzie postawił go
+    // motyw; margines zatrzymuje limit (cap), więc nic nie rośnie. Dorobić osobny sposób, gdy trafi się taki motyw.
     function place() {
       queued = false;
       var height = bar.offsetHeight;
@@ -115,24 +133,32 @@
       if (!top && sticky) set(body, 'padding-bottom', (basePadding + height) + 'px');
       if (!top) return;
       detect();
-      // Element schodzi tuż pod pasek: przypięty do ekranu pod jego widoczną dolną krawędź, przewijany ze stroną
-      // pod miejsce paska na stronie. Przesunięcie liczymy od położenia elementu bez naszego marginesu.
       var barBottom = bar.getBoundingClientRect().bottom;
       var slotBottom = (space || bar).getBoundingClientRect().bottom;
+      var cap = height + (adminBar ? adminBar.offsetHeight : 0);
       shifted.forEach(function (item) {
-        var position = window.getComputedStyle(item.node).position;
-        var offset = 0;
-        if (position === 'fixed' || position === 'absolute') {
-          var natural = item.node.getBoundingClientRect().top - item.offset;
-          offset = Math.max(0, (position === 'fixed' ? barBottom : slotBottom) - natural);
-        }
-        item.offset = offset;
-        set(item.node, 'margin-top', (item.base + offset) + 'px', 'important');
+        var style = window.getComputedStyle(item.node);
+        var position = style.position;
+        var natural = item.node.getBoundingClientRect().top - ((parseFloat(style.marginTop) || 0) - item.base);
+        var limit = position === 'fixed' ? barBottom : slotBottom;
+        var offset = position === 'fixed' || position === 'absolute' ? Math.round(Math.min(Math.max(0, limit - natural), cap)) : 0;
+        if (offset === 0) restore(item);
+        else set(item.node, 'margin-top', (item.base + offset) + 'px', 'important');
       });
     }
 
+    // Widoczny naprawdę, także gdy przezroczysty albo ukryty jest element nadrzędny.
+    function shown(node) {
+      if (typeof node.checkVisibility === 'function') return node.checkVisibility({ opacityProperty: true, visibilityProperty: true });
+      for (var current = node; current && current !== document.documentElement; current = current.parentElement) {
+        var style = window.getComputedStyle(current);
+        if (style.display === 'none' || style.visibility === 'hidden' || Number(style.opacity) <= 0.05) return false;
+      }
+      return true;
+    }
+
     // Otwarte menu albo inna nakładka na cały ekran: pasek chowa się pod nią. Warstwa menu bywa zamknięta w warstwie
-    // nagłówka (d-x.pl: z-index 10), więc samo niższe z-index paska nie wystarcza.
+    // nagłówka (d-x.pl: z-index 10), więc samo niższe z-index paska nie wystarcza. Wąski panel boczny pasek zostawia.
     function overlaid() {
       var rect = bar.getBoundingClientRect();
       var y = rect.top + rect.height / 2;
@@ -141,8 +167,8 @@
           if (bar.contains(node) || node.closest('#wpadminbar')) return false;
           var style = window.getComputedStyle(node);
           var box = node.getBoundingClientRect();
-          return style.position === 'fixed' && box.height > window.innerHeight * 0.6 && box.top <= rect.top
-            && style.visibility !== 'hidden' && Number(style.opacity) > 0.05 && style.pointerEvents !== 'none';
+          return style.position === 'fixed' && box.height > window.innerHeight * 0.6 && box.width >= window.innerWidth * 0.5
+            && box.top <= rect.top && style.pointerEvents !== 'none' && shown(node);
         });
       });
     }
@@ -151,6 +177,8 @@
       if (queued) return;
       queued = true;
       window.requestAnimationFrame(function () {
+        // Klatka zaplanowana przed zamknięciem paska nie może z powrotem ustawić marginesu.
+        if (!bar.isConnected) return;
         place();
         var covered = overlaid();
         if (bar.classList.contains('dxp-bar--covered') !== covered) bar.classList.toggle('dxp-bar--covered', covered);
@@ -158,10 +186,11 @@
     }
 
     place();
-    window.addEventListener('resize', queue);
+    var refresh = queue;
+    window.addEventListener('resize', refresh);
     window.addEventListener('scroll', queue, { passive: true });
     // Motywy przypinają nagłówek skryptem po wczytaniu strony.
-    window.addEventListener('load', queue);
+    window.addEventListener('load', refresh);
     // Menu otwiera się zmianą klasy albo stylu; sprawdzamy także po animacji otwarcia.
     // Najwyżej co 200 ms: suwaki i animacje zmieniają style wiele razy na sekundę.
     var pending = 0;
@@ -174,10 +203,10 @@
     bar.querySelector('.dxp-bar__x').addEventListener('click', function () {
       observer.disconnect();
       window.clearTimeout(pending);
-      window.removeEventListener('resize', queue);
+      window.removeEventListener('resize', refresh);
       window.removeEventListener('scroll', queue);
-      window.removeEventListener('load', queue);
-      shifted.forEach(function (item) { item.node.style.removeProperty('margin-top'); });
+      window.removeEventListener('load', refresh);
+      shifted.forEach(function (item) { restore(item); });
       if (space) space.remove();
       if (!top && sticky) body.style.paddingBottom = '';
       bar.remove();
