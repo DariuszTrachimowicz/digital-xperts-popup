@@ -3,11 +3,11 @@ Contributors: digitalxperts
 Requires at least: 6.2
 Tested up to: 7.2
 Requires PHP: 8.0
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 License: GPL-2.0-or-later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Popup i pasek informacyjny dla odwiedzających: gotowe style i okazje, biblioteka popupów, daty wyświetlania i podgląd przed włączeniem.
+Popup i pasek informacyjny dla odwiedzających: gotowe style i okazje, biblioteki popupów i pasków, daty wyświetlania i podgląd przed włączeniem.
 
 == Description ==
 
@@ -26,6 +26,8 @@ Digital Xperts Popup pokazuje odwiedzającym okno z komunikatem albo pasek infor
 * Jedno zdanie i opcjonalny przycisk z adresem, na przykład „Darmowa dostawa od 200 zł”.
 * Na górze strony albo na dole ekranu, przyklejony przy przewijaniu albo nie.
 * Te same gotowe style i okazje co popup oraz styl Własny z wyborem kolorów.
+* Biblioteka pasków: zapisz pasek pod nazwą i wczytaj go za rok. Siedem gotowych pasków okazjonalnych z treścią.
+* Przyklejony pasek zostaje na górze ekranu także na motywach, które wyłączają przewijanie na `html` i `body`. Nagłówek i menu motywu przesuwają się pod pasek, a otwarte menu na telefonie zakrywa pasek.
 * Krzyżyk zamyka pasek. Strona pamięta zamknięcie przez wybraną liczbę dni, a nowa treść pokazuje pasek ponownie.
 * Pasek na górze jest widoczny od pierwszej chwili i nie przesuwa treści po wczytaniu strony.
 
@@ -61,6 +63,11 @@ Wtyczka aktualizuje się z wydań na GitHubie: https://github.com/DariuszTrachim
 Strona z Menedżerem Strony AI 2.8.0 lub starszym: najpierw zaktualizuj Menedżera do 2.9.0. Do tego czasu popup zostaje w Menedżerze, a ta wtyczka pokazuje tylko pasek.
 
 == Changelog ==
+
+= 1.1.0 =
+* Biblioteka pasków i paski okazjonalne (Nowy Rok, Boże Narodzenie, Wielkanoc, Święto Niepodległości, Black Friday, Walentynki, Mikołajki).
+* Przyklejony pasek przypięty do ekranu także tam, gdzie motyw ma `overflow: hidden` (d-x.pl). Wcześniej przewijał się ze stroną.
+* Pasek nie zasłania już nagłówka ani menu: nagłówki motywu schodzą pod pasek, także przy zalogowanym administratorze, a otwarte menu na telefonie jest nad paskiem.
 
 = 1.0.0 =
 * Popup przeniesiony z Menedżera Strony AI 2.8.0 z ustawieniami, biblioteką i własnym CSS.

@@ -12,7 +12,6 @@ final class Popup
 {
     private const OPTION = 'asm_popup';
     private const LIBRARY = 'asm_popup_library';
-    private const LIBRARY_LIMIT = 50;
     private const BASE_STYLES = array(
         'auto' => 'Jak strona',
         'custom' => 'Własny',
@@ -79,43 +78,23 @@ final class Popup
     /** @return array<string,array{name:string,saved:int,settings:array<string,mixed>}> Popupy zapisane przez administratora. */
     public static function library(): array
     {
-        $library = get_option(self::LIBRARY, array());
-        return is_array($library) ? $library : array();
+        return Library::all(self::LIBRARY);
     }
 
-    // Zapis do biblioteki nie obejmuje pola enabled: wczytany popup nie włącza się sam.
     public static function remember(string $name, array $settings): bool
     {
-        $name = sanitize_text_field($name);
-        $library = self::library();
-        if ($name === '' || count($library) >= self::LIBRARY_LIMIT) {
-            return false;
-        }
-        $clean = self::clean($settings);
-        // Daty dotyczą jednej kampanii; wczytany z biblioteki popup bierze daty obecnego.
-        unset($clean['enabled'], $clean['start'], $clean['end']);
-        $library[bin2hex(random_bytes(6))] = array('name' => mb_substr($name, 0, 80), 'saved' => time(), 'settings' => $clean);
-        return update_option(self::LIBRARY, $library, false);
+        return Library::remember(self::LIBRARY, $name, self::clean($settings));
     }
 
     /** @return array<string,mixed>|null Ustawienia z biblioteki albo z szablonu (identyfikator „tpl:klucz”). */
     public static function recall(string $id): ?array
     {
-        if (str_starts_with($id, 'tpl:')) {
-            return self::templates()[substr($id, 4)]['settings'] ?? null;
-        }
-        $entry = self::library()[$id] ?? null;
-        return is_array($entry) && is_array($entry['settings'] ?? null) ? $entry['settings'] : null;
+        return Library::recall(self::LIBRARY, $id, self::templates());
     }
 
     public static function forget(string $id): bool
     {
-        $library = self::library();
-        if (! isset($library[$id])) {
-            return false;
-        }
-        unset($library[$id]);
-        return update_option(self::LIBRARY, $library, false);
+        return Library::forget(self::LIBRARY, $id);
     }
 
     /** @return array<string,mixed> */

@@ -13,10 +13,10 @@ final class Admin
     private const NONCE = 'dxp_admin';
     private const MESSAGES = array(
         'popup_saved' => 'Zapisano ustawienia popupu.',
-        'popup_remembered' => 'Zapisano popup w bibliotece.',
-        'popup_loaded' => 'Wczytano popup. Sprawdź treść i zapisz, a potem obejrzyj podgląd.',
-        'popup_forgotten' => 'Usunięto popup z biblioteki.',
-        'popup_library_failed' => 'Nie udało się wykonać operacji na bibliotece. Podaj nazwę albo usuń starsze wpisy (limit 50).',
+        'library_remembered' => 'Zapisano w bibliotece.',
+        'library_loaded' => 'Wczytano. Sprawdź treść i zapisz, a potem obejrzyj podgląd.',
+        'library_forgotten' => 'Usunięto z biblioteki.',
+        'library_failed' => 'Nie udało się wykonać operacji na bibliotece. Podaj nazwę albo usuń starsze wpisy (limit 50).',
         'bar_saved' => 'Zapisano ustawienia paska.',
     );
 
@@ -25,7 +25,7 @@ final class Admin
         add_action('admin_menu', array($this, 'menu'));
         add_action('admin_enqueue_scripts', array($this, 'assets'));
         add_action('admin_post_dxp_save_popup', array($this, 'savePopup'));
-        add_action('admin_post_dxp_popup_library', array($this, 'popupLibrary'));
+        add_action('admin_post_dxp_library', array($this, 'library'));
         add_action('admin_post_dxp_save_bar', array($this, 'saveBar'));
         add_action('wp_ajax_dxp_toggle', array($this, 'toggle'));
         add_filter('plugin_action_links_' . plugin_basename(DXP_PLUGIN_FILE), array($this, 'actionLinks'));
@@ -150,25 +150,28 @@ final class Admin
         return Schedule::state($settings, $bar ? 'Pasek' : 'Popup', trim((string) $settings['message']) !== '');
     }
 
-    public function popupLibrary(): void
+    // Biblioteka popupu albo paska (pole library_part): zapis obecnych ustawień, wczytanie wpisu lub szablonu, usunięcie.
+    public function library(): void
     {
         $this->guard();
+        $tab = ($_POST['library_part'] ?? '') === 'bar' ? 'bar' : 'popup';
+        $class = $tab === 'bar' ? Bar::class : Popup::class;
         $operation = sanitize_key(wp_unslash((string) ($_POST['library_action'] ?? '')));
         $id = sanitize_text_field(wp_unslash((string) ($_POST['library_id'] ?? '')));
-        $current = Popup::settings();
+        $current = $class::settings();
         if ($operation === 'save') {
-            $ok = Popup::remember(wp_unslash((string) ($_POST['library_name'] ?? '')), $current);
-            $this->redirect($ok ? 'popup_remembered' : 'popup_library_failed', 'popup');
+            $ok = $class::remember(wp_unslash((string) ($_POST['library_name'] ?? '')), $current);
+            $this->redirect($ok ? 'library_remembered' : 'library_failed', $tab);
         }
         if ($operation === 'load') {
-            $settings = Popup::recall($id);
+            $settings = $class::recall($id);
             if ($settings !== null) {
-                // Wczytanie nie zmienia tego, czy popup jest włączony.
-                Popup::save(array_merge($current, $settings, array('enabled' => ! empty($current['enabled']))));
+                // Wczytanie nie zmienia tego, czy popup albo pasek jest włączony, ani dat.
+                $class::save(array_merge($current, $settings, array('enabled' => ! empty($current['enabled']))));
             }
-            $this->redirect($settings !== null ? 'popup_loaded' : 'popup_library_failed', 'popup');
+            $this->redirect($settings !== null ? 'library_loaded' : 'library_failed', $tab);
         }
-        $this->redirect($operation === 'delete' && Popup::forget($id) ? 'popup_forgotten' : 'popup_library_failed', 'popup');
+        $this->redirect($operation === 'delete' && $class::forget($id) ? 'library_forgotten' : 'library_failed', $tab);
     }
 
     private function toggleField(string $part, bool $enabled, array $settings, string $label): void
@@ -270,54 +273,67 @@ final class Admin
                 <p class="description">Podgląd widzi tylko zalogowany administrator, także gdy popup jest wyłączony albo poza datami. Najpierw zapisz zmiany.</p>
             </section>
         </form>
+        <?php
+        $this->librarySections('popup');
+    }
+
+    private function librarySections(string $part): void
+    {
+        $bar = $part === 'bar';
+        $class = $bar ? Bar::class : Popup::class;
+        $what = $bar ? 'pasek' : 'popup';
+        $templates = array();
+        foreach ($class::templates() as $key => $template) {
+            $templates['tpl:' . $key] = $template;
+        }
+        ?>
         <div class="dxp-grid dxp-grid--wide">
             <section class="dxp-surface">
-                <h2>Biblioteka popupów</h2>
-                <p>Zapisz obecny popup pod nazwą, żeby wrócić do niego później, na przykład co roku przed świętami.</p>
+                <h2><?php echo esc_html($bar ? 'Biblioteka pasków' : 'Biblioteka popupów'); ?></h2>
+                <p><?php echo esc_html('Zapisz obecny ' . $what . ' pod nazwą, żeby wrócić do niego później, na przykład co roku przed świętami.'); ?></p>
                 <form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" class="dxp-copy-row">
                     <?php wp_nonce_field(self::NONCE); ?>
-                    <input type="hidden" name="action" value="dxp_popup_library">
+                    <input type="hidden" name="action" value="dxp_library">
+                    <input type="hidden" name="library_part" value="<?php echo esc_attr($part); ?>">
                     <input type="hidden" name="library_action" value="save">
-                    <input name="library_name" required maxlength="80" aria-label="Nazwa popupu w bibliotece" placeholder="Nazwa, np. Promocja zimowa">
-                    <button class="button" type="submit">Zapisz obecny popup</button>
+                    <input name="library_name" required maxlength="80" aria-label="Nazwa w bibliotece" placeholder="Nazwa, np. Promocja zimowa">
+                    <button class="button" type="submit"><?php echo esc_html('Zapisz obecny ' . $what); ?></button>
                 </form>
-                <p class="description">Do biblioteki trafia ostatnio zapisana wersja popupu: treść, przycisk i wygląd, bez dat.</p>
-                <?php $this->libraryTable(Popup::library(), true); ?>
+                <p class="description">Do biblioteki trafia ostatnio zapisana wersja: treść, przycisk i wygląd, bez dat.</p>
+                <?php $this->libraryTable($class::library(), true, $part); ?>
             </section>
             <section class="dxp-surface">
-                <h2>Popupy okazjonalne</h2>
+                <h2><?php echo esc_html($bar ? 'Paski okazjonalne' : 'Popupy okazjonalne'); ?></h2>
                 <p>Gotowa treść i wygląd na święta. Po wczytaniu możesz zmienić tekst i zapisać.</p>
-                <?php
-                $templates = array();
-                foreach (Popup::templates() as $key => $template) {
-                    $templates['tpl:' . $key] = $template;
-                }
-                $this->libraryTable($templates, false);
-                ?>
+                <?php $this->libraryTable($templates, false, $part); ?>
             </section>
         </div>
         <?php
     }
 
-    private function libraryTable(array $entries, bool $deletable): void
+    private function libraryTable(array $entries, bool $deletable, string $part): void
     {
         if (! $entries) {
             echo '<p class="description">Biblioteka jest pusta.</p>';
             return;
         }
-        $labels = Popup::styles();
-        echo '<table class="widefat dxp-table"><thead><tr><th scope="col">Nazwa</th><th scope="col">Tytuł</th><th scope="col">Styl</th><th scope="col">Działania</th></tr></thead><tbody>';
+        $bar = $part === 'bar';
+        $labels = $bar ? Bar::styles() : Popup::styles();
+        $column = $bar ? 'Treść' : 'Tytuł';
+        $what = $bar ? 'obecnego paska' : 'obecnego popupu';
+        echo '<table class="widefat dxp-table"><thead><tr><th scope="col">Nazwa</th><th scope="col">' . $column . '</th><th scope="col">Styl</th><th scope="col">Działania</th></tr></thead><tbody>';
         foreach ($entries as $id => $entry) {
             $settings = (array) ($entry['settings'] ?? array());
             $name = (string) ($entry['name'] ?? '');
-            echo '<tr><td data-label="Nazwa">' . esc_html($name) . '</td><td data-label="Tytuł">' . esc_html((string) ($settings['title'] ?? '')) . '</td><td data-label="Styl">' . esc_html($labels[$settings['style'] ?? ''] ?? '') . '</td><td data-label="Działania"><div class="dxp-row-actions">';
+            $summary = (string) ($settings[$bar ? 'message' : 'title'] ?? '');
+            echo '<tr><td data-label="Nazwa">' . esc_html($name) . '</td><td data-label="' . $column . '">' . esc_html($summary) . '</td><td data-label="Styl">' . esc_html($labels[$settings['style'] ?? ''] ?? '') . '</td><td data-label="Działania"><div class="dxp-row-actions">';
             foreach (array_filter(array('load' => 'Wczytaj', 'delete' => $deletable ? 'Usuń' : null)) as $operation => $label) {
                 $question = $operation === 'load'
-                    ? 'Wczytać „' . $name . '”? Zastąpi to treść i wygląd obecnego popupu.'
+                    ? 'Wczytać „' . $name . '”? Zastąpi to treść i wygląd ' . $what . '.'
                     : 'Usunąć „' . $name . '” z biblioteki?';
                 echo '<form method="post" action="' . esc_url(admin_url('admin-post.php')) . '" data-confirm="' . esc_attr($question) . '">';
                 wp_nonce_field(self::NONCE);
-                echo '<input type="hidden" name="action" value="dxp_popup_library"><input type="hidden" name="library_action" value="' . esc_attr($operation) . '"><input type="hidden" name="library_id" value="' . esc_attr((string) $id) . '">';
+                echo '<input type="hidden" name="action" value="dxp_library"><input type="hidden" name="library_part" value="' . esc_attr($part) . '"><input type="hidden" name="library_action" value="' . esc_attr($operation) . '"><input type="hidden" name="library_id" value="' . esc_attr((string) $id) . '">';
                 echo '<button class="button button-small" type="submit" disabled data-needs-confirm>' . esc_html($label) . '</button></form>';
             }
             echo '</div></td></tr>';
@@ -373,6 +389,7 @@ final class Admin
             </section>
         </form>
         <?php
+        $this->librarySections('bar');
     }
 
     private function guard(): void

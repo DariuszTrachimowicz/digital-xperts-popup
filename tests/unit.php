@@ -80,6 +80,22 @@ assert(! str_contains(Bar::renderMarkup(array('message' => 'x', 'button_text' =>
 $custom = Bar::renderMarkup(array('message' => 'x', 'style' => 'custom', 'background' => '#ffffff', 'text' => '#000000', 'accent' => '#ff0000'));
 assert(str_contains($custom, '--dxp-bar-bg:#ffffff;--dxp-bar-text:#000000;--dxp-bar-accent:#ff0000;--dxp-bar-accent-text:#ffffff'));
 
+// Paski okazjonalne: 7 okazji w stylach okazji popupu, krótka treść bez wymyślonych liczb.
+assert(count(Bar::templates()) === 7);
+foreach (Bar::templates() as $key => $template) {
+    assert(isset(Bar::styles()[$template['settings']['style']]) && mb_strlen($template['settings']['message']) <= 300, $key);
+    assert(Bar::recall('tpl:' . $key) === $template['settings']);
+}
+
+// Biblioteka pasków: osobna od popupów, zapis bez enabled i dat, czyszczenie treści jak przy zapisie paska.
+assert(Bar::remember('Dostawa', array('enabled' => true, 'message' => '<b>Darmowa</b> dostawa', 'style' => 'business', 'start' => '2026-12-01T00:00')) === true);
+$barLibrary = Bar::library();
+$barId = array_key_first($barLibrary);
+assert(count($barLibrary) === 1 && Popup::library() === array());
+assert($barLibrary[$barId]['settings']['message'] === 'Darmowa dostawa' && ! array_key_exists('enabled', $barLibrary[$barId]['settings']) && ! array_key_exists('start', $barLibrary[$barId]['settings']));
+assert(Bar::recall($barId)['style'] === 'business' && Bar::recall('brak') === null && Bar::recall('tpl:brak') === null);
+assert(Bar::forget($barId) === true && Bar::library() === array() && Bar::forget($barId) === false);
+
 // Nowa treść zmienia identyfikator zamknięcia, więc pasek wraca do osób, które zamknęły poprzedni.
 $revision = static fn(string $message): string => preg_match('/data-revision="([0-9a-f]{12})"/', Bar::renderMarkup(array('message' => $message)), $m) ? $m[1] : '';
 assert($revision('Pierwsza') !== $revision('Druga') && $revision('Pierwsza') === $revision('Pierwsza'));

@@ -2,7 +2,8 @@
    dla p, a i button nie zmieniały paska. */
 #dxp-bar {
   position: relative;
-  z-index: 99998;
+  /* Pod menu i nakładkami motywu (zwykle 9999 i wyżej), nad zwykłą treścią i nagłówkiem. */
+  z-index: 9990;
   display: flex;
   align-items: center;
   box-sizing: border-box;
@@ -16,7 +17,9 @@
   text-align: center;
 }
 .dxp-bar-off #dxp-bar { display: none !important; }
-#dxp-bar.dxp-bar--sticky.dxp-bar--top { position: sticky; top: var(--wp-admin--admin-bar--height, 0px); }
+#dxp-bar.dxp-bar--covered { visibility: hidden; }
+#dxp-bar.dxp-bar--top.dxp-bar--pinned { position: fixed; right: 0; left: 0; }
+#dxp-bar-space { display: block; width: 100%; }
 #dxp-bar.dxp-bar--sticky.dxp-bar--bottom { position: fixed; right: 0; bottom: 0; left: 0; }
 #dxp-bar .dxp-bar__inner {
   display: flex;
@@ -65,8 +68,6 @@
 #dxp-bar :focus-visible { outline: 3px solid currentColor; outline-offset: 2px; }
 @media (max-width: 600px) {
   #dxp-bar { padding: 8px 48px 8px 12px; font-size: 14px; }
-  /* Na telefonie pasek administratora WordPressa przewija się razem ze stroną. */
-  #dxp-bar.dxp-bar--sticky.dxp-bar--top { top: 0; }
 }
 @media (prefers-reduced-motion: no-preference) {
   #dxp-bar .dxp-bar__btn, #dxp-bar .dxp-bar__x { transition: background-color .15s ease; }

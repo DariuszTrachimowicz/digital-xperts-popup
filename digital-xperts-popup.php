@@ -2,8 +2,8 @@
 /**
  * Plugin Name: Digital Xperts Popup
  * Plugin URI: https://github.com/DariuszTrachimowicz/digital-xperts-popup
- * Description: Popup i pasek informacyjny dla odwiedzających: gotowe style i okazje, biblioteka popupów, daty wyświetlania i podgląd przed włączeniem.
- * Version: 1.0.0
+ * Description: Popup i pasek informacyjny dla odwiedzających: gotowe style i okazje, biblioteki popupów i pasków, daty wyświetlania i podgląd przed włączeniem.
+ * Version: 1.1.0
  * Requires at least: 6.2
  * Requires PHP: 8.0
  * Author: Dariusz Trachimowicz
@@ -21,13 +21,14 @@ namespace DigitalXperts\Popup;
 
 defined('ABSPATH') || exit;
 
-const VERSION = '1.0.0';
+const VERSION = '1.1.0';
 const SLUG = 'digital-xperts-popup';
 
 \define('DXP_VERSION', VERSION);
 \define('DXP_PLUGIN_FILE', __FILE__);
 
 require_once __DIR__ . '/includes/Schedule.php';
+require_once __DIR__ . '/includes/Library.php';
 require_once __DIR__ . '/includes/Popup.php';
 require_once __DIR__ . '/includes/Bar.php';
 require_once __DIR__ . '/includes/Admin.php';

@@ -106,6 +106,68 @@ popup({ enabled: true, title: 'Za tydzień', message: 'x', start: local(new Date
 check(!(await page.locator('#asm-popup').isVisible()), 'popup z datą „od” w przyszłości się nie otwiera');
 await context.close();
 
+// 7. Nagłówki motywów (tests/mu/header-fixture.php): pasek nie zasłania nagłówka, przyklejony zostaje na górze,
+// menu na telefonie (nakładka z-index 9999) jest nad paskiem.
+popup({ enabled: false });
+const layout = page => page.evaluate(() => {
+  const b = document.getElementById('dxp-bar').getBoundingClientRect();
+  const h = document.getElementById('fx-header').getBoundingClientRect();
+  return { barTop: Math.round(b.top), barBottom: Math.round(b.bottom), headerTop: Math.round(h.top) };
+});
+for (const sticky of [true, false]) {
+  bar({ enabled: true, message: 'Darmowa dostawa od 200 zł do końca listopada.', button_text: 'Zobacz', button_url: 'https://example.com/', position: 'top', sticky, style: 'dark' });
+  for (const fx of ['dx', 'abs', 'fixed']) {
+    const label = `${fx}, ${sticky ? 'przyklejony' : 'nieprzyklejony'}`;
+    ({ context, page } = await open({ width: 1440, height: 900 }));
+    await page.goto(base + '?fx=' + fx, { waitUntil: 'load' });
+    await page.waitForTimeout(300);
+    let l = await layout(page);
+    check(l.barTop === 0 && l.headerTop >= l.barBottom - 1, `${label}: nagłówek pod paskiem (pasek ${l.barTop}-${l.barBottom}, nagłówek od ${l.headerTop})`);
+    if (fx === 'dx' && sticky) await page.screenshot({ path: path.join(shots, '7-naglowek-dx-gora.png') });
+    await page.mouse.wheel(0, 1200);
+    await page.waitForTimeout(400);
+    l = await layout(page);
+    if (sticky) {
+      check(l.barTop === 0, `${label}: po przewinięciu pasek na górze ekranu`);
+      if (fx === 'fixed') check(l.headerTop >= l.barBottom - 1, `${label}: po przewinięciu przyklejony nagłówek pod paskiem`);
+    } else {
+      check(l.barBottom <= 0, `${label}: po przewinięciu pasek odjechał ze stroną`);
+      if (fx === 'fixed') check(l.headerTop === 0, `${label}: po przewinięciu przyklejony nagłówek wraca na górę ekranu`);
+    }
+    if (fx === 'dx' && sticky) await page.screenshot({ path: path.join(shots, '8-naglowek-dx-przewiniete.png') });
+    await context.close();
+  }
+}
+// Menu na telefonie zakrywa pasek, a zamknięcie paska przywraca nagłówek na miejsce.
+bar({ enabled: true, message: 'Darmowa dostawa od 200 zł.', position: 'top', sticky: true, style: 'dark' });
+({ context, page } = await open({ width: 390, height: 844 }));
+await page.goto(base + '?fx=fixed', { waitUntil: 'load' });
+await page.waitForTimeout(300);
+// Menu zamknięte w warstwie nagłówka (z-index 10), jak na d-x.pl: pasek chowa się, gdy menu jest otwarte.
+await page.evaluate(() => { const m = document.getElementById('fx-menu'); document.getElementById('fx-header').appendChild(m); m.classList.add('open'); });
+await page.waitForTimeout(700);
+check(await page.evaluate(() => { const r = document.getElementById('dxp-bar').getBoundingClientRect(); return document.elementFromPoint(r.left + 20, r.top + r.height / 2).closest('#fx-menu') !== null; }), 'otwarte menu w warstwie nagłówka jest nad paskiem');
+await page.evaluate(() => document.getElementById('fx-menu').classList.remove('open'));
+await page.waitForTimeout(700);
+check(await page.evaluate(() => getComputedStyle(document.getElementById('dxp-bar')).visibility === 'visible'), 'po zamknięciu menu pasek wraca');
+await page.click('#dxp-bar .dxp-bar__x');
+check(await page.evaluate(() => Math.round(document.getElementById('fx-header').getBoundingClientRect().top) === 0 && !document.getElementById('dxp-bar-space')), 'po zamknięciu paska nagłówek wraca na górę');
+await context.close();
+
+// Zalogowany administrator: pasek pod paskiem administratora, nagłówek pod paskiem.
+({ context, page } = await open({ width: 1440, height: 900 }));
+await page.goto(base + 'wp-login.php');
+await page.fill('#user_login', 'admin');
+await page.fill('#user_pass', 'local-fixture-only');
+await page.click('#wp-submit');
+await page.waitForLoadState('load');
+await page.goto(base + '?fx=abs', { waitUntil: 'load' });
+await page.waitForTimeout(300);
+const admin = await page.evaluate(() => ({ admin: Math.round(document.getElementById('wpadminbar').getBoundingClientRect().bottom), ...(() => { const b = document.getElementById('dxp-bar').getBoundingClientRect(); const h = document.getElementById('fx-header').getBoundingClientRect(); return { barTop: Math.round(b.top), barBottom: Math.round(b.bottom), headerTop: Math.round(h.top) }; })() }));
+check(admin.barTop === admin.admin && admin.headerTop >= admin.barBottom - 1, `administrator: pasek pod paskiem administratora, nagłówek pod paskiem (${JSON.stringify(admin)})`);
+await page.screenshot({ path: path.join(shots, '9-administrator.png') });
+await context.close();
+
 await browser.close();
 popup({ enabled: false });
 bar({ enabled: false });

@@ -42,21 +42,144 @@
       return;
     }
     var body = document.body;
+    var top = bar.classList.contains('dxp-bar--top');
+    var sticky = bar.classList.contains('dxp-bar--sticky');
     // Pasek ze stopki (motyw bez wp_body_open) trafia na początek strony.
-    if (bar.classList.contains('dxp-bar--top')) {
+    if (top) {
       if (body.firstElementChild !== bar) body.insertBefore(bar, body.firstChild);
     } else if (body.lastElementChild !== bar) {
       body.appendChild(bar);
     }
-    // Przyklejony pasek na dole zasłaniałby koniec strony, więc strona dostaje odstęp jego wysokości.
-    var fixed = bar.classList.contains('dxp-bar--bottom') && bar.classList.contains('dxp-bar--sticky');
-    var base = parseFloat(window.getComputedStyle(body).paddingBottom) || 0;
-    var pad = function () { if (fixed) body.style.paddingBottom = (base + bar.offsetHeight) + 'px'; };
-    pad();
-    window.addEventListener('resize', pad);
+    var adminBar = document.getElementById('wpadminbar');
+    var space = null;
+    var shifted = [];
+    var basePadding = parseFloat(window.getComputedStyle(body).paddingBottom) || 0;
+    var queued = false;
+
+    // Przyklejony pasek na górze jest przypięty do ekranu (position: fixed), a jego miejsce zajmuje puste pole.
+    // position: sticky nie działa na motywach z overflow: hidden na html albo body (np. d-x.pl).
+    if (top && sticky) {
+      space = document.createElement('div');
+      space.id = 'dxp-bar-space';
+      space.setAttribute('aria-hidden', 'true');
+      body.insertBefore(space, bar.nextSibling);
+      bar.classList.add('dxp-bar--pinned');
+    }
+
+    // Dolna krawędź paska administratora na ekranie; na telefonie ten pasek przewija się ze stroną.
+    function adminOffset() {
+      if (!adminBar) return 0;
+      return Math.max(0, adminBar.getBoundingClientRect().bottom);
+    }
+
+    // Nagłówki i menu przypięte do ekranu albo do strony (fixed, absolute), które zachodzą na pasek.
+    // Element szerokości całego ekranu i wysokości ponad 60 % ekranu to nakładka (np. menu na telefonie): zostaje.
+    function candidate(node) {
+      if (node === bar || node === space || node === body || node === document.documentElement || bar.contains(node)) return false;
+      if (node.closest('#wpadminbar, #asm-popup')) return false;
+      var style = window.getComputedStyle(node);
+      if (style.position !== 'fixed' && style.position !== 'absolute') return false;
+      if (style.position === 'absolute' && node.offsetParent && node.offsetParent !== body && node.offsetParent !== document.documentElement) return false;
+      var rect = node.getBoundingClientRect();
+      if (rect.height > window.innerHeight * 0.6) return false;
+      // Element przewijany ze stroną liczy się tylko na samej górze strony; niżej przejeżdża pod przypiętym paskiem.
+      if (style.position === 'absolute' && rect.top >= (space || bar).getBoundingClientRect().bottom - 1) return false;
+      return !shifted.some(function (item) { return item.node === node || item.node.contains(node) || node.contains(item.node); });
+    }
+
+    function detect() {
+      var rect = bar.getBoundingClientRect();
+      if (rect.bottom <= 0) return;
+      [rect.top + 2, rect.bottom - 2].forEach(function (y) {
+        [0.05, 0.5, 0.95].forEach(function (x) {
+          document.elementsFromPoint(window.innerWidth * x, y).forEach(function (node) {
+            if (candidate(node)) shifted.push({ node: node, base: parseFloat(window.getComputedStyle(node).marginTop) || 0, offset: 0 });
+          });
+        });
+      });
+    }
+
+    // Zapis tylko przy zmianie: inaczej obserwator zmian strony budziłby się od własnych zapisów.
+    function set(node, name, value, priority) {
+      if (node.style.getPropertyValue(name) !== value) node.style.setProperty(name, value, priority || '');
+    }
+
+    // Przesunięcie przez margin-top: działa niezależnie od tego, jak motyw ustawia top przypiętego nagłówka.
+    function place() {
+      queued = false;
+      var height = bar.offsetHeight;
+      if (space) {
+        set(space, 'height', height + 'px');
+        set(bar, 'top', adminOffset() + 'px');
+      }
+      if (!top && sticky) set(body, 'padding-bottom', (basePadding + height) + 'px');
+      if (!top) return;
+      detect();
+      // Element schodzi tuż pod pasek: przypięty do ekranu pod jego widoczną dolną krawędź, przewijany ze stroną
+      // pod miejsce paska na stronie. Przesunięcie liczymy od położenia elementu bez naszego marginesu.
+      var barBottom = bar.getBoundingClientRect().bottom;
+      var slotBottom = (space || bar).getBoundingClientRect().bottom;
+      shifted.forEach(function (item) {
+        var position = window.getComputedStyle(item.node).position;
+        var offset = 0;
+        if (position === 'fixed' || position === 'absolute') {
+          var natural = item.node.getBoundingClientRect().top - item.offset;
+          offset = Math.max(0, (position === 'fixed' ? barBottom : slotBottom) - natural);
+        }
+        item.offset = offset;
+        set(item.node, 'margin-top', (item.base + offset) + 'px', 'important');
+      });
+    }
+
+    // Otwarte menu albo inna nakładka na cały ekran: pasek chowa się pod nią. Warstwa menu bywa zamknięta w warstwie
+    // nagłówka (d-x.pl: z-index 10), więc samo niższe z-index paska nie wystarcza.
+    function overlaid() {
+      var rect = bar.getBoundingClientRect();
+      var y = rect.top + rect.height / 2;
+      return [0.05, 0.5, 0.95].some(function (x) {
+        return document.elementsFromPoint(window.innerWidth * x, y).some(function (node) {
+          if (bar.contains(node) || node.closest('#wpadminbar')) return false;
+          var style = window.getComputedStyle(node);
+          var box = node.getBoundingClientRect();
+          return style.position === 'fixed' && box.height > window.innerHeight * 0.6 && box.top <= rect.top
+            && style.visibility !== 'hidden' && Number(style.opacity) > 0.05 && style.pointerEvents !== 'none';
+        });
+      });
+    }
+
+    function queue() {
+      if (queued) return;
+      queued = true;
+      window.requestAnimationFrame(function () {
+        place();
+        var covered = overlaid();
+        if (bar.classList.contains('dxp-bar--covered') !== covered) bar.classList.toggle('dxp-bar--covered', covered);
+      });
+    }
+
+    place();
+    window.addEventListener('resize', queue);
+    window.addEventListener('scroll', queue, { passive: true });
+    // Motywy przypinają nagłówek skryptem po wczytaniu strony.
+    window.addEventListener('load', queue);
+    // Menu otwiera się zmianą klasy albo stylu; sprawdzamy także po animacji otwarcia.
+    // Najwyżej co 200 ms: suwaki i animacje zmieniają style wiele razy na sekundę.
+    var pending = 0;
+    var observer = new MutationObserver(function () {
+      if (pending) return;
+      pending = window.setTimeout(function () { pending = 0; queue(); }, 200);
+    });
+    observer.observe(body, { subtree: true, attributes: true, attributeFilter: ['class', 'style', 'aria-expanded', 'hidden', 'open'] });
+
     bar.querySelector('.dxp-bar__x').addEventListener('click', function () {
-      window.removeEventListener('resize', pad);
-      if (fixed) body.style.paddingBottom = '';
+      observer.disconnect();
+      window.clearTimeout(pending);
+      window.removeEventListener('resize', queue);
+      window.removeEventListener('scroll', queue);
+      window.removeEventListener('load', queue);
+      shifted.forEach(function (item) { item.node.style.removeProperty('margin-top'); });
+      if (space) space.remove();
+      if (!top && sticky) body.style.paddingBottom = '';
       bar.remove();
       if (bar.getAttribute('data-preview') === '1') return;
       try {

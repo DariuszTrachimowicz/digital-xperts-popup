@@ -14,7 +14,45 @@ defined('ABSPATH') || exit;
 final class Bar
 {
     private const OPTION = 'dxp_bar';
+    private const LIBRARY = 'dxp_bar_library';
     private bool $rendered = false;
+
+    /** @return array<string,array{name:string,settings:array<string,mixed>}> Gotowe paski okazjonalne w stylach okazji popupu. */
+    public static function templates(): array
+    {
+        // Bez wymyślonych rabatów i terminów: pola w nawiasach uzupełnia właściciel strony, adres przycisku też.
+        return array(
+            'nowy-rok' => array('name' => 'Nowy Rok', 'settings' => array('style' => 'nowy-rok', 'message' => 'Szczęśliwego Nowego Roku! Dziękujemy, że jesteście z nami.', 'button_text' => '', 'button_url' => '')),
+            'boze-narodzenie' => array('name' => 'Boże Narodzenie', 'settings' => array('style' => 'boze-narodzenie', 'message' => 'Wesołych Świąt! W czasie świąt odpowiadamy na wiadomości z opóźnieniem.', 'button_text' => '', 'button_url' => '')),
+            'wielkanoc' => array('name' => 'Wielkanoc', 'settings' => array('style' => 'wielkanoc', 'message' => 'Wesołego Alleluja! W czasie świąt odpowiadamy na wiadomości z opóźnieniem.', 'button_text' => '', 'button_url' => '')),
+            'niepodleglosc' => array('name' => 'Święto Niepodległości', 'settings' => array('style' => 'niepodleglosc', 'message' => '11 listopada nie pracujemy. Odpowiemy w najbliższy dzień roboczy.', 'button_text' => '', 'button_url' => '')),
+            'black-friday' => array('name' => 'Black Friday', 'settings' => array('style' => 'black-friday', 'message' => 'Black Friday: [wpisz rabat i to, co obejmuje]. Oferta trwa do [wpisz datę].', 'button_text' => 'Zobacz ofertę', 'button_url' => '')),
+            'walentynki' => array('name' => 'Walentynki', 'settings' => array('style' => 'walentynki', 'message' => 'Szukasz prezentu na Walentynki? Zobacz nasze propozycje na 14 lutego.', 'button_text' => 'Zobacz propozycje', 'button_url' => '')),
+            'mikolajki' => array('name' => 'Mikołajki', 'settings' => array('style' => 'mikolajki', 'message' => 'Mikołajki już 6 grudnia. Zamówienia przyjmujemy do [wpisz datę].', 'button_text' => 'Zobacz pomysły', 'button_url' => '')),
+        );
+    }
+
+    /** @return array<string,array{name:string,saved:int,settings:array<string,mixed>}> */
+    public static function library(): array
+    {
+        return Library::all(self::LIBRARY);
+    }
+
+    public static function remember(string $name, array $settings): bool
+    {
+        return Library::remember(self::LIBRARY, $name, self::clean($settings));
+    }
+
+    /** @return array<string,mixed>|null */
+    public static function recall(string $id): ?array
+    {
+        return Library::recall(self::LIBRARY, $id, self::templates());
+    }
+
+    public static function forget(string $id): bool
+    {
+        return Library::forget(self::LIBRARY, $id);
+    }
 
     /** @return array<string,mixed> */
     public static function defaults(): array
